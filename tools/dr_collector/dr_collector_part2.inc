@@ -153,6 +153,7 @@ setDefaultConfig(CollectorConfig* config)
     memset(config, 0, sizeof(*config));
     copyString(config->outputDir, sizeof(config->outputDir), "%USERPROFILE%\\Desktop\\DRs");
     copyString(config->stateFile, sizeof(config->stateFile), "%USERPROFILE%\\Desktop\\DRs\\dr_state.tsv");
+    copyString(config->logFile, sizeof(config->logFile), "%USERPROFILE%\\Desktop\\DRs\\dr_collector.log");
     copyString(config->relayName, sizeof(config->relayName), "relay-1");
     copyString(config->directory, sizeof(config->directory), "/COMTRADE/");
     config->relayPort = 102;
@@ -179,6 +180,7 @@ loadConfig(const char* path, CollectorConfig* config)
 
     readStringField(json, "output_dir", config->outputDir, sizeof(config->outputDir));
     readStringField(json, "state_file", config->stateFile, sizeof(config->stateFile));
+    readStringField(json, "log_file", config->logFile, sizeof(config->logFile));
     config->stableCycles = readIntField(json, "stable_cycles_before_download", config->stableCycles);
     config->scanIntervalSec = readIntField(json, "post_trigger_scan_interval_sec", config->scanIntervalSec);
     config->scanAttempts = readIntField(json, "post_trigger_scan_attempts", config->scanAttempts);
@@ -206,6 +208,7 @@ loadConfig(const char* path, CollectorConfig* config)
 
     expandEnv(config->outputDir, sizeof(config->outputDir));
     expandEnv(config->stateFile, sizeof(config->stateFile));
+    expandEnv(config->logFile, sizeof(config->logFile));
 
     free(json);
 

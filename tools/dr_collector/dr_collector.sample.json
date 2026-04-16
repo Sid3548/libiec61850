@@ -1,6 +1,7 @@
 {
   "output_dir": "%USERPROFILE%\\Desktop\\DRs",
   "state_file": "%USERPROFILE%\\Desktop\\DRs\\dr_state.tsv",
+  "log_file": "%USERPROFILE%\\Desktop\\DRs\\dr_collector.log",
   "stable_cycles_before_download": 2,
   "post_trigger_scan_interval_sec": 10,
   "post_trigger_scan_attempts": 18,

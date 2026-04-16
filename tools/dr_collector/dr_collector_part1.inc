@@ -43,6 +43,7 @@ static void sleepSeconds(int seconds) { sleep((unsigned int) seconds); }
 typedef struct {
     char outputDir[MAX_PATH_LEN];
     char stateFile[MAX_PATH_LEN];
+    char logFile[MAX_PATH_LEN];
     char relayName[MAX_NAME_LEN];
     char relayIp[MAX_NAME_LEN];
     int relayPort;
@@ -90,6 +91,7 @@ typedef struct {
 } DownloadContext;
 
 static volatile int gRunning = 1;
+static FILE* gLogFile = NULL;
 
 static void
 handleSigint(int signalId)
@@ -125,6 +127,11 @@ logLine(const char* level, const char* message)
 
     printf("%s [%s] %s\n", ts, level, message);
     fflush(stdout);
+
+    if (gLogFile) {
+        fprintf(gLogFile, "%s [%s] %s\n", ts, level, message);
+        fflush(gLogFile);
+    }
 }
 
 static bool
@@ -179,6 +186,25 @@ makeDirectoryRecursive(const char* path)
     }
 
     return directoryExists(tmp) || MKDIR(tmp) == 0 || errno == EEXIST;
+}
+
+static bool
+makeParentDirectory(const char* path)
+{
+    char dir[MAX_PATH_LEN];
+    char* slash;
+
+    copyString(dir, sizeof(dir), path);
+    slash = strrchr(dir, '/');
+
+    if (slash == NULL)
+        slash = strrchr(dir, '\\');
+
+    if (slash == NULL)
+        return true;
+
+    *slash = 0;
+    return makeDirectoryRecursive(dir);
 }
 
 static void

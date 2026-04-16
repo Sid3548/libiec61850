@@ -213,6 +213,7 @@ main(int argc, char** argv)
     CollectorConfig config;
     StateTable state;
     bool once = false;
+    int result;
     int i;
 
     if (argc < 2) {
@@ -233,9 +234,31 @@ main(int argc, char** argv)
         return 1;
     }
 
+    if (config.logFile[0] != 0) {
+        char msg[MAX_PATH_LEN + 64];
+
+        if (makeParentDirectory(config.logFile))
+            gLogFile = fopen(config.logFile, "a");
+
+        if (gLogFile) {
+            snprintf(msg, sizeof(msg), "log file %s", config.logFile);
+            logLine("INFO", msg);
+        }
+        else {
+            logLine("WARN", "cannot open log file");
+        }
+    }
+
     if (!loadState(config.stateFile, &state))
         memset(&state, 0, sizeof(state));
 
     signal(SIGINT, handleSigint);
-    return runCollector(&config, &state, once);
+    result = runCollector(&config, &state, once);
+
+    if (gLogFile) {
+        fclose(gLogFile);
+        gLogFile = NULL;
+    }
+
+    return result;
 }

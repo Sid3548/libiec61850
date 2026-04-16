@@ -10,6 +10,12 @@ Desktop/DRs/<relay-name>/dr_fault_<timestamp>/
 
 No GOOSE is used. No remote files are deleted. Only `.cfg` and `.dat` files are downloaded for the GRL200 MVP. The relay `trigger_rcb` value must come from the relay ICD/CID/SCD file or relay browser.
 
+The same status lines printed in the terminal are also appended to `log_file`, defaulting to:
+
+```text
+Desktop/DRs/dr_collector.log
+```
+
 ## Build
 
 ```sh
