@@ -105,15 +105,32 @@ readStringField(char* json, const char* key, char* out, size_t outSize)
         readJsonString(&value, out, outSize);
 }
 
-static int
-readIntField(char* json, const char* key, int fallback)
+static bool
+readIntField(char* json, const char* key, int fallback, int* outValue)
 {
     char* value = findKey(json, key);
+    char* endPtr;
+    long parsed;
 
-    if (value == NULL)
-        return fallback;
+    if (value == NULL) {
+        *outValue = fallback;
+        return true;
+    }
 
-    return atoi(value);
+    errno = 0;
+    parsed = strtol(value, &endPtr, 10);
+
+    if (endPtr == value || errno == ERANGE || parsed < INT_MIN || parsed > INT_MAX)
+        return false;
+
+    while (*endPtr && isspace((unsigned char) *endPtr))
+        endPtr++;
+
+    if (*endPtr != 0 && *endPtr != ',' && *endPtr != '}' && *endPtr != ']')
+        return false;
+
+    *outValue = (int) parsed;
+    return true;
 }
 
 static bool
@@ -131,6 +148,30 @@ readBoolField(char* json, const char* key, bool fallback)
         return false;
 
     return fallback;
+}
+
+static int
+clampIntMin(int value, int minValue)
+{
+    return value < minValue ? minValue : value;
+}
+
+static int
+clampIntRange(int value, int minValue, int maxValue)
+{
+    if (value < minValue)
+        return minValue;
+
+    if (value > maxValue)
+        return maxValue;
+
+    return value;
+}
+
+static bool
+isConfigPlaceholder(const char* value)
+{
+    return value == NULL || value[0] == 0 || strcmp(value, "FILL_FROM_ICD_OR_RELAY_BROWSER") == 0;
 }
 
 static char*
@@ -170,6 +211,7 @@ loadConfig(const char* path, CollectorConfig* config)
 {
     char* json = readWholeFile(path);
     char* relay;
+    int parsedValue;
 
     setDefaultConfig(config);
 
@@ -181,11 +223,36 @@ loadConfig(const char* path, CollectorConfig* config)
     readStringField(json, "output_dir", config->outputDir, sizeof(config->outputDir));
     readStringField(json, "state_file", config->stateFile, sizeof(config->stateFile));
     readStringField(json, "log_file", config->logFile, sizeof(config->logFile));
-    config->stableCycles = readIntField(json, "stable_cycles_before_download", config->stableCycles);
-    config->scanIntervalSec = readIntField(json, "post_trigger_scan_interval_sec", config->scanIntervalSec);
-    config->scanAttempts = readIntField(json, "post_trigger_scan_attempts", config->scanAttempts);
-    config->connectTimeoutMs = readIntField(json, "connect_timeout_ms", config->connectTimeoutMs);
-    config->requestTimeoutMs = readIntField(json, "request_timeout_ms", config->requestTimeoutMs);
+    if (!readIntField(json, "stable_cycles_before_download", config->stableCycles, &parsedValue)) {
+        free(json);
+        logLine("ERROR", "invalid stable_cycles_before_download");
+        return false;
+    }
+    config->stableCycles = parsedValue;
+    if (!readIntField(json, "post_trigger_scan_interval_sec", config->scanIntervalSec, &parsedValue)) {
+        free(json);
+        logLine("ERROR", "invalid post_trigger_scan_interval_sec");
+        return false;
+    }
+    config->scanIntervalSec = parsedValue;
+    if (!readIntField(json, "post_trigger_scan_attempts", config->scanAttempts, &parsedValue)) {
+        free(json);
+        logLine("ERROR", "invalid post_trigger_scan_attempts");
+        return false;
+    }
+    config->scanAttempts = parsedValue;
+    if (!readIntField(json, "connect_timeout_ms", config->connectTimeoutMs, &parsedValue)) {
+        free(json);
+        logLine("ERROR", "invalid connect_timeout_ms");
+        return false;
+    }
+    config->connectTimeoutMs = parsedValue;
+    if (!readIntField(json, "request_timeout_ms", config->requestTimeoutMs, &parsedValue)) {
+        free(json);
+        logLine("ERROR", "invalid request_timeout_ms");
+        return false;
+    }
+    config->requestTimeoutMs = parsedValue;
     config->baselineExisting = readBoolField(json, "baseline_existing_on_start", config->baselineExisting);
 
     relay = findFirstRelayObject(json);
@@ -198,12 +265,28 @@ loadConfig(const char* path, CollectorConfig* config)
 
     readStringField(relay, "name", config->relayName, sizeof(config->relayName));
     readStringField(relay, "ip", config->relayIp, sizeof(config->relayIp));
-    config->relayPort = readIntField(relay, "port", config->relayPort);
+    if (!readIntField(relay, "port", config->relayPort, &parsedValue)) {
+        free(json);
+        logLine("ERROR", "invalid relay port");
+        return false;
+    }
+    config->relayPort = parsedValue;
     readStringField(relay, "trigger_rcb", config->triggerRcb, sizeof(config->triggerRcb));
     readStringField(relay, "trigger_handler_reference", config->triggerHandler, sizeof(config->triggerHandler));
     readStringField(relay, "trigger_dataset", config->triggerDataSet, sizeof(config->triggerDataSet));
+    readStringField(relay, "directory", config->directory, sizeof(config->directory));
 
-    if (config->triggerHandler[0] == 0)
+    config->stableCycles = clampIntMin(config->stableCycles, 1);
+    config->scanIntervalSec = clampIntMin(config->scanIntervalSec, 1);
+    config->scanAttempts = clampIntMin(config->scanAttempts, 1);
+    config->connectTimeoutMs = clampIntMin(config->connectTimeoutMs, 1000);
+    config->requestTimeoutMs = clampIntMin(config->requestTimeoutMs, 1000);
+    config->relayPort = clampIntRange(config->relayPort, 1, 65535);
+
+    if (config->directory[0] == 0)
+        copyString(config->directory, sizeof(config->directory), "/COMTRADE/");
+
+    if (isConfigPlaceholder(config->triggerHandler))
         copyString(config->triggerHandler, sizeof(config->triggerHandler), config->triggerRcb);
 
     expandEnv(config->outputDir, sizeof(config->outputDir));
@@ -212,8 +295,7 @@ loadConfig(const char* path, CollectorConfig* config)
 
     free(json);
 
-    if (config->relayIp[0] == 0 || config->triggerRcb[0] == 0 ||
-            strcmp(config->triggerRcb, "FILL_FROM_ICD_OR_RELAY_BROWSER") == 0) {
+    if (config->relayIp[0] == 0 || isConfigPlaceholder(config->triggerRcb)) {
         logLine("ERROR", "fill relay ip and trigger_rcb in JSON before running");
         return false;
     }
