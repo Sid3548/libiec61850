@@ -69,6 +69,40 @@ getState(StateTable* state, const char* remotePath)
     return index;
 }
 
+static bool
+parseHandledStateField(const char* value, bool* handled)
+{
+    char* endPtr;
+    long parsed;
+
+    if (value == NULL || handled == NULL)
+        return false;
+
+    errno = 0;
+    parsed = strtol(value, &endPtr, 10);
+
+    if (endPtr == value || errno == ERANGE)
+        return false;
+
+    while (*endPtr && isspace((unsigned char) *endPtr))
+        endPtr++;
+
+    if (*endPtr != 0)
+        return false;
+
+    if (parsed == 0) {
+        *handled = false;
+        return true;
+    }
+
+    if (parsed == 1) {
+        *handled = true;
+        return true;
+    }
+
+    return false;
+}
+
 static void
 updateFileState(StateTable* state, RemoteFile* file, bool baseline)
 {
@@ -116,8 +150,12 @@ loadState(const char* path, StateTable* state)
         char* modified = strtok(NULL, "\t\r\n");
         char* handled = strtok(NULL, "\t\r\n");
         FileState* item;
+        bool handledValue;
 
         if (!remotePath || !size || !modified || !handled)
+            continue;
+
+        if (!parseHandledStateField(handled, &handledValue))
             continue;
 
         item = &state->entries[state->count++];
@@ -125,7 +163,7 @@ loadState(const char* path, StateTable* state)
         copyString(item->remotePath, sizeof(item->remotePath), remotePath);
         item->size = (uint32_t) strtoul(size, NULL, 10);
         item->lastModified = (uint64_t) strtoull(modified, NULL, 10);
-        item->handled = atoi(handled) != 0;
+        item->handled = handledValue;
         item->stableCount = item->handled ? 999 : 1;
     }
 
@@ -257,4 +295,3 @@ downloadOne(IedConnection con, const RemoteFile* file, const char* outDir)
 
     IedConnection_getFile(con, &error, file->remotePath, writeDownloadChunk, &context);
     fclose(context.fp);
-
