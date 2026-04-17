@@ -8,8 +8,6 @@
   "connect_timeout_ms": 5000,
   "request_timeout_ms": 20000,
   "baseline_existing_on_start": true,
-  "delete_after_download": false,
-  "max_recursion_depth": 1,
   "relays": [
     {
       "name": "relay-1",
@@ -17,15 +15,7 @@
       "port": 102,
       "trigger_rcb": "FILL_FROM_ICD_OR_RELAY_BROWSER",
       "trigger_handler_reference": "FILL_FROM_ICD_OR_RELAY_BROWSER",
-      "directories": [
-        "/COMTRADE/",
-        "COMTRADE",
-        "\\COMTRADE\\"
-      ],
-      "extensions": [
-        ".cfg",
-        ".dat"
-      ]
+      "directory": "/COMTRADE/"
     }
   ]
 }
