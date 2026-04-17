@@ -12,6 +12,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <signal.h>
+#include <limits.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -149,8 +150,13 @@ isDrivePrefix(const char* path, size_t index)
 static bool
 directoryExists(const char* path)
 {
+#ifdef _WIN32
+    DWORD attributes = GetFileAttributesA(path);
+    return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY);
+#else
     struct stat st;
-    return stat(path, &st) == 0 && (st.st_mode & S_IFDIR);
+    return stat(path, &st) == 0 && S_ISDIR(st.st_mode);
+#endif
 }
 
 static bool

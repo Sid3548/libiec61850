@@ -102,11 +102,14 @@ enableReportTrigger(IedConnection con, const CollectorConfig* config, ClientRepo
 {
     IedClientError error;
     ClientReportControlBlock rcb;
+    int parametersMask;
+    char msg[MAX_PATH_LEN + 128];
 
     rcb = IedConnection_getRCBValues(con, &error, config->triggerRcb, NULL);
 
     if (error != IED_ERROR_OK || rcb == NULL) {
-        logLine("ERROR", "cannot read trigger RCB");
+        snprintf(msg, sizeof(msg), "cannot read trigger RCB %s: %s", config->triggerRcb, IedClientError_toString(error));
+        logLine("ERROR", msg);
         return false;
     }
 
@@ -116,18 +119,26 @@ enableReportTrigger(IedConnection con, const CollectorConfig* config, ClientRepo
     IedConnection_installReportHandler(con, config->triggerHandler, ClientReportControlBlock_getRptId(rcb),
             reportCallback, context);
 
+    parametersMask = RCB_ELEMENT_RPT_ENA | RCB_ELEMENT_TRG_OPS;
+
+#ifdef RCB_ELEMENT_RESV
+    ClientReportControlBlock_setResv(rcb, true);
+    parametersMask |= RCB_ELEMENT_RESV;
+#endif
+
     ClientReportControlBlock_setTrgOps(rcb, TRG_OPT_DATA_CHANGED | TRG_OPT_DATA_UPDATE | TRG_OPT_QUALITY_CHANGED);
-    if (config->triggerDataSet[0] != 0)
+    if (config->triggerDataSet[0] != 0) {
         ClientReportControlBlock_setDataSetReference(rcb, config->triggerDataSet);
+        parametersMask |= RCB_ELEMENT_DATSET;
+    }
     ClientReportControlBlock_setRptEna(rcb, true);
 
-    IedConnection_setRCBValues(con, &error, rcb,
-            RCB_ELEMENT_RPT_ENA | RCB_ELEMENT_TRG_OPS |
-            (config->triggerDataSet[0] != 0 ? RCB_ELEMENT_DATSET : 0), true);
+    IedConnection_setRCBValues(con, &error, rcb, parametersMask, true);
 
     if (error != IED_ERROR_OK) {
+        snprintf(msg, sizeof(msg), "cannot enable trigger RCB: %s", IedClientError_toString(error));
         ClientReportControlBlock_destroy(rcb);
-        logLine("ERROR", "cannot enable trigger RCB");
+        logLine("ERROR", msg);
         return false;
     }
 
@@ -160,11 +171,14 @@ runCollector(const CollectorConfig* config, StateTable* state, bool once)
         return 1;
     }
 
-    if (config->baselineExisting) {
+    if (config->baselineExisting && state->count == 0) {
         count = scanComtrade(con, config, state, files, true);
         snprintf(msg, sizeof(msg), "baseline marked %d existing file(s)", count);
         logLine("INFO", msg);
         saveState(config->stateFile, state);
+    }
+    else if (config->baselineExisting) {
+        logLine("INFO", "baseline skipped because state already has entries");
     }
 
     if (!enableReportTrigger(con, config, &rcb, &trigger)) {
@@ -199,9 +213,21 @@ runCollector(const CollectorConfig* config, StateTable* state, bool once)
         sleepSeconds(1);
     }
 
-    ClientReportControlBlock_setRptEna(rcb, false);
-    IedConnection_setRCBValues(con, &error, rcb, RCB_ELEMENT_RPT_ENA, true);
-    ClientReportControlBlock_destroy(rcb);
+    if (rcb) {
+        int disableMask = RCB_ELEMENT_RPT_ENA;
+
+        ClientReportControlBlock_setRptEna(rcb, false);
+#ifdef RCB_ELEMENT_RESV
+        ClientReportControlBlock_setResv(rcb, false);
+        disableMask |= RCB_ELEMENT_RESV;
+#endif
+        IedConnection_setRCBValues(con, &error, rcb, disableMask, true);
+        if (error != IED_ERROR_OK) {
+            snprintf(msg, sizeof(msg), "cannot disable trigger RCB cleanly: %s", IedClientError_toString(error));
+            logLine("WARN", msg);
+        }
+        ClientReportControlBlock_destroy(rcb);
+    }
     IedConnection_abort(con, &error);
     IedConnection_destroy(con);
     return 0;
