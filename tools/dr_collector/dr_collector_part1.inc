@@ -40,6 +40,8 @@ static void sleepSeconds(int seconds) { sleep((unsigned int) seconds); }
 #define MAX_FILES 512
 #define MAX_STATE 2048
 #define MAX_GROUP_FILES 8
+#define DEFAULT_CONFIG_FILE "dr_collector.local.json"
+#define SAMPLE_CONFIG_FILE "dr_collector.sample.json"
 
 typedef struct {
     char outputDir[MAX_PATH_LEN];
@@ -228,6 +230,39 @@ joinLocalPath(char* out, size_t outSize, const char* left, const char* right)
     snprintf(out + len, outSize - len, "%s", right ? right : "");
 }
 
+static bool
+fileExists(const char* path)
+{
+    FILE* fp = fopen(path, "rb");
+
+    if (fp == NULL)
+        return false;
+
+    fclose(fp);
+    return true;
+}
+
+static void
+expandHomePrefix(char* path, size_t pathSize)
+{
+    const char* home;
+    char out[MAX_PATH_LEN];
+
+    if (path[0] != '~' || (path[1] != 0 && !isLocalSep(path[1])))
+        return;
+
+    home = getenv("HOME");
+
+    if (home == NULL)
+        home = getenv("USERPROFILE");
+
+    if (home == NULL || home[0] == 0)
+        return;
+
+    snprintf(out, sizeof(out), "%s%s", home, path + 1);
+    copyString(path, pathSize, out);
+}
+
 static void
 expandEnv(char* path, size_t pathSize)
 {
@@ -279,6 +314,7 @@ expandEnv(char* path, size_t pathSize)
 
     out[o] = 0;
     copyString(path, pathSize, out);
+    expandHomePrefix(path, pathSize);
 }
 
 static char*

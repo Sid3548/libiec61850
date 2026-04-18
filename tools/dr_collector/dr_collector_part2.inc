@@ -175,17 +175,28 @@ isConfigPlaceholder(const char* value)
 }
 
 static char*
-findFirstRelayObject(char* json)
+findObjectField(char* json, const char* key)
 {
-    char* relays = findKey(json, "relays");
+    char* object = findKey(json, key);
 
-    if (relays == NULL)
+    if (object == NULL)
         return NULL;
 
-    while (*relays && *relays != '{')
-        relays++;
+    while (*object && *object != '{')
+        object++;
 
-    return *relays == '{' ? relays : NULL;
+    return *object == '{' ? object : NULL;
+}
+
+static char*
+findRelayObject(char* json)
+{
+    char* relay = findObjectField(json, "relay");
+
+    if (relay)
+        return relay;
+
+    return findObjectField(json, "relays");
 }
 
 static void
@@ -216,7 +227,9 @@ loadConfig(const char* path, CollectorConfig* config)
     setDefaultConfig(config);
 
     if (json == NULL) {
-        logLine("ERROR", "cannot read config file");
+        char msg[MAX_PATH_LEN + 64];
+        snprintf(msg, sizeof(msg), "cannot read config file %s", path);
+        logLine("ERROR", msg);
         return false;
     }
 
@@ -255,7 +268,7 @@ loadConfig(const char* path, CollectorConfig* config)
     config->requestTimeoutMs = parsedValue;
     config->baselineExisting = readBoolField(json, "baseline_existing_on_start", config->baselineExisting);
 
-    relay = findFirstRelayObject(json);
+    relay = findRelayObject(json);
 
     if (relay == NULL) {
         free(json);
