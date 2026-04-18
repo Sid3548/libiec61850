@@ -10,6 +10,32 @@ Desktop/DRs/<relay-name>/dr_fault_<timestamp>/
 
 No GOOSE is used. No remote files are deleted. Only `.cfg` and `.dat` files are downloaded for the GRL200 MVP. The relay `trigger_rcb` value must come from the relay ICD/CID/SCD file or relay browser.
 
+Normal use has one editable file:
+
+```text
+tools/dr_collector/dr_collector.local.json
+```
+
+`make run` creates it from `dr_collector.sample.json` if it does not exist.
+
+Required relay inputs:
+
+| Field | Meaning |
+| --- | --- |
+| `relay.ip` | Relay IP address |
+| `relay.trigger_rcb` | Report-control-block reference from ICD/CID/SCD or relay browser |
+
+Usually leave these defaults unless the relay differs:
+
+| Field | Meaning |
+| --- | --- |
+| `relay.name` | Folder name under `Desktop/DRs` |
+| `relay.port` | IEC 61850/MMS port, normally `102` |
+| `relay.directory` | Relay COMTRADE folder to scan |
+| `output_dir` | Local root output folder |
+| `state_file` | Tracks files already seen/downloaded |
+| `log_file` | Collector log path |
+
 Set relay `directory` to the COMTRADE folder to scan. Default:
 
 ```text
@@ -34,14 +60,34 @@ For Windows, build with the existing project Windows toolchain/Visual Studio flo
 
 ## Run
 
+Build and run with the local config:
+
 ```sh
-tools/dr_collector/dr_collector tools/dr_collector/dr_collector.sample.json
+make -C tools/dr_collector run
+```
+
+Build and exit after the first completed download:
+
+```sh
+make -C tools/dr_collector once
+```
+
+After building, this also works because `dr_collector.local.json` is now the default config:
+
+```sh
+tools/dr_collector/dr_collector
 ```
 
 Wait for relay report trigger, then exit after the first completed download:
 
 ```sh
-tools/dr_collector/dr_collector tools/dr_collector/dr_collector.sample.json --once
+tools/dr_collector/dr_collector --once
+```
+
+Use a different config file only when needed:
+
+```sh
+tools/dr_collector/dr_collector path/to/other.json --once
 ```
 
 Set `baseline_existing_on_start` to `true` so old relay files are marked known only when the state file is empty. Existing files are not downloaded on first run, and later restarts do not re-baseline files that appeared while the app was down.

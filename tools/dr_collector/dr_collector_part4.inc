@@ -233,26 +233,119 @@ runCollector(const CollectorConfig* config, StateTable* state, bool once)
     return 0;
 }
 
+static void
+printUsage(const char* program)
+{
+    printf("Usage: %s [config.json] [--once]\n", program);
+    printf("Default config search:\n");
+    printf("  %s\n", DEFAULT_CONFIG_FILE);
+    printf("  tools/dr_collector/%s\n", DEFAULT_CONFIG_FILE);
+    printf("  <program-dir>/%s\n", DEFAULT_CONFIG_FILE);
+    printf("Edit first: tools/dr_collector/%s\n", DEFAULT_CONFIG_FILE);
+}
+
+static void
+programDirPath(char* out, size_t outSize, const char* program, const char* fileName)
+{
+    char dir[MAX_PATH_LEN];
+    char* slash;
+
+    copyString(dir, sizeof(dir), program);
+    slash = strrchr(dir, '/');
+
+    if (slash == NULL)
+        slash = strrchr(dir, '\\');
+
+    if (slash == NULL) {
+        copyString(out, outSize, fileName);
+        return;
+    }
+
+    *slash = 0;
+    joinLocalPath(out, outSize, dir, fileName);
+}
+
+static const char*
+resolveDefaultConfig(char* out, size_t outSize, const char* program)
+{
+    char candidate[MAX_PATH_LEN];
+
+    if (fileExists(DEFAULT_CONFIG_FILE)) {
+        copyString(out, outSize, DEFAULT_CONFIG_FILE);
+        return out;
+    }
+
+    joinLocalPath(candidate, sizeof(candidate), "tools/dr_collector", DEFAULT_CONFIG_FILE);
+    if (fileExists(candidate)) {
+        copyString(out, outSize, candidate);
+        return out;
+    }
+
+    programDirPath(candidate, sizeof(candidate), program, DEFAULT_CONFIG_FILE);
+    if (fileExists(candidate)) {
+        copyString(out, outSize, candidate);
+        return out;
+    }
+
+    if (fileExists(SAMPLE_CONFIG_FILE)) {
+        copyString(out, outSize, SAMPLE_CONFIG_FILE);
+        return out;
+    }
+
+    joinLocalPath(candidate, sizeof(candidate), "tools/dr_collector", SAMPLE_CONFIG_FILE);
+    if (fileExists(candidate)) {
+        copyString(out, outSize, candidate);
+        return out;
+    }
+
+    programDirPath(candidate, sizeof(candidate), program, SAMPLE_CONFIG_FILE);
+    if (fileExists(candidate)) {
+        copyString(out, outSize, candidate);
+        return out;
+    }
+
+    copyString(out, outSize, DEFAULT_CONFIG_FILE);
+    return NULL;
+}
+
 int
 main(int argc, char** argv)
 {
     CollectorConfig config;
     StateTable state;
     bool once = false;
+    const char* configPath = NULL;
+    char defaultConfig[MAX_PATH_LEN];
     int result;
     int i;
 
-    if (argc < 2) {
-        printf("Usage: dr_collector <config.json> [--once]\n");
-        return 1;
-    }
-
-    for (i = 2; i < argc; i++) {
+    for (i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--once") == 0)
             once = true;
+        else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
+            printUsage(argv[0]);
+            return 0;
+        }
+        else if (configPath == NULL)
+            configPath = argv[i];
+        else {
+            printUsage(argv[0]);
+            return 1;
+        }
     }
 
-    if (!loadConfig(argv[1], &config))
+    if (configPath == NULL) {
+        configPath = resolveDefaultConfig(defaultConfig, sizeof(defaultConfig), argv[0]);
+
+        if (configPath == NULL) {
+            printUsage(argv[0]);
+            return 1;
+        }
+    }
+
+    printf("Config: %s\n", configPath);
+
+    if (!loadConfig(configPath, &config))
         return 1;
 
     if (!makeDirectoryRecursive(config.outputDir)) {

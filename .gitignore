@@ -3,3 +3,4 @@ build/
 third_party/mbedtls
 third_party/winpcap
 third_party/sqlite
+tools/dr_collector/dr_collector.local.json
