@@ -1,95 +1,167 @@
 # DR Collector
 
-Small IEC 61850/MMS disturbance-record collector.
+Runs continuously on the engineering PC. When a relay trips, it automatically downloads the COMTRADE disturbance record (`.cfg` + `.dat`) to your Desktop.
 
-It subscribes to a configured IEC 61850 report control block. When a report arrives, it checks the relay COMTRADE folder and downloads new stable `.cfg/.dat` files into:
+Files land here:
 
-```text
-Desktop/DRs/<relay-name>/dr_fault_<timestamp>/
+```
+Desktop\DRs\<relay-name>\dr_fault_<timestamp>\
 ```
 
-No GOOSE is used. No remote files are deleted. Only `.cfg` and `.dat` files are downloaded for the GRL200 MVP. The relay `trigger_rcb` value must come from the relay ICD/CID/SCD file or relay browser.
+---
 
-Normal use has one editable file:
+## Quick start
 
-```text
-tools/dr_collector/dr_collector.local.json
+### Step 1 — Get the two files
+
+Put these in the same folder (e.g. `C:\DR_Collector\`):
+
+- `dr_collector.exe` — built by your engineer (see Build below)
+- `dr_collector.local.json` — your config file (copy from `dr_collector.sample.json`)
+
+### Step 2 — Edit the config
+
+Open `dr_collector.local.json` and fill in **two values**:
+
+```json
+{
+  "relay": {
+    "ip": "192.168.1.10",
+    "trigger_rcb": "PROT1/LLN0.RP.TripRCB01"
+  }
+}
 ```
 
-`make run` creates it from `dr_collector.sample.json` if it does not exist.
+| Field | What to put |
+|---|---|
+| `relay.ip` | IP address of the relay |
+| `relay.trigger_rcb` | Report control block path — see below |
 
-Required relay inputs:
+Everything else is pre-filled and works for most relays. You can leave it alone.
 
-| Field | Meaning |
-| --- | --- |
-| `relay.ip` | Relay IP address |
-| `relay.trigger_rcb` | Report-control-block reference from ICD/CID/SCD or relay browser |
+### Step 3 — Run
 
-Usually leave these defaults unless the relay differs:
+Double-click `dr_collector.exe`, or from a command prompt:
 
-| Field | Meaning |
-| --- | --- |
-| `relay.name` | Folder name under `Desktop/DRs` |
-| `relay.port` | IEC 61850/MMS port, normally `102` |
-| `relay.directory` | Relay COMTRADE folder to scan |
-| `output_dir` | Local root output folder |
-| `state_file` | Tracks files already seen/downloaded |
-| `log_file` | Collector log path |
-
-Set relay `directory` to the COMTRADE folder to scan. Default:
-
-```text
-/COMTRADE/
+```
+dr_collector.exe
 ```
 
-After the config is loaded and the log file is opened, status lines printed in the terminal are also appended to `log_file`, defaulting to:
+It runs forever. When the relay trips, files appear on your Desktop under `DRs\`. If the relay reboots or the network drops, it reconnects automatically.
 
-```text
-Desktop/DRs/dr_collector.log
+Press `Ctrl+C` to stop.
+
+---
+
+## Finding trigger_rcb
+
+This is the only value that differs between relay models. It comes from the relay's ICD or SCD file.
+
+**Option A — from the ICD/SCD file:**
+
+Open the relay's `.icd` or `.scd` file in a text editor. Search for `ReportControl`. You will see entries like:
+
+```xml
+<ReportControl name="TripRCB01" ...>
 ```
 
-Errors before config loading or log opening can only be printed to the terminal.
+The full path is built as: `<LDevice inst>/<LN prefix+class inst>.RP.<ReportControl name>`
+
+Example: LDevice `PROT1`, LN `LLN0`, ReportControl `TripRCB01` → `PROT1/LLN0.RP.TripRCB01`
+
+**Option B — from an MMS browser:**
+
+Connect to the relay with an IEC 61850 MMS browser tool (e.g. the libiec61850 `iec61850_client_example1` demo or any relay configuration tool). Browse to the logical node that handles trip reports and copy the RCB reference shown there.
+
+---
+
+## Full config reference
+
+```json
+{
+  "output_dir": "~/Desktop/DRs",
+  "state_file": "~/Desktop/DRs/dr_state.tsv",
+  "log_file": "~/Desktop/DRs/dr_collector.log",
+  "stable_cycles_before_download": 2,
+  "post_trigger_scan_interval_sec": 10,
+  "post_trigger_scan_attempts": 18,
+  "connect_timeout_ms": 5000,
+  "request_timeout_ms": 20000,
+  "baseline_existing_on_start": true,
+  "relay": {
+    "name": "relay-1",
+    "ip": "192.168.1.10",
+    "port": 102,
+    "trigger_rcb": "PROT1/LLN0.RP.TripRCB01",
+    "directory": "/COMTRADE/"
+  }
+}
+```
+
+| Field | Default | Meaning |
+|---|---|---|
+| `output_dir` | `~/Desktop/DRs` | Root folder where DRs are saved |
+| `state_file` | `~/Desktop/DRs/dr_state.tsv` | Tracks which files have already been downloaded |
+| `log_file` | `~/Desktop/DRs/dr_collector.log` | Log file path |
+| `stable_cycles_before_download` | `2` | How many scans a file must be unchanged before downloading |
+| `post_trigger_scan_interval_sec` | `10` | Seconds between scans after a trip |
+| `post_trigger_scan_attempts` | `18` | Max scans to attempt after a trip (18 × 10s = 3 min) |
+| `connect_timeout_ms` | `5000` | Connection timeout in milliseconds |
+| `request_timeout_ms` | `20000` | Per-request timeout in milliseconds |
+| `baseline_existing_on_start` | `true` | Mark files already on the relay as known so they are not downloaded on first run |
+| `relay.name` | `relay-1` | Subfolder name under `output_dir` |
+| `relay.ip` | — | **Required.** Relay IP address |
+| `relay.port` | `102` | IEC 61850 MMS port (almost always 102) |
+| `relay.trigger_rcb` | — | **Required.** Report control block reference |
+| `relay.directory` | `/COMTRADE/` | Folder on the relay that holds COMTRADE files |
+
+`~` expands to your home directory on both Windows (`%USERPROFILE%`) and Linux/macOS (`$HOME`). You can also write `%USERPROFILE%\Desktop\DRs` directly.
+
+---
 
 ## Build
+
+### Linux / macOS
 
 ```sh
 make -C tools/dr_collector
 ```
 
-For Windows, build with the existing project Windows toolchain/Visual Studio flow and this source file, or cross-compile through the existing Makefile target if MinGW is available.
+### Windows (MinGW)
 
-## Run
-
-Build and run with the local config:
+From a MinGW shell at the repo root:
 
 ```sh
-make -C tools/dr_collector run
+make BUILD_TARGET=WIN32 -C tools/dr_collector
 ```
 
-Build and exit after the first completed download:
+### Windows (Visual Studio / MSVC)
+
+Build the libiec61850 solution, then add `tools/dr_collector/dr_collector.c` as a new console application project and link against `iec61850.lib`.
+
+---
+
+## Test a single download
+
+Build and exit after the first completed download (useful for commissioning):
 
 ```sh
 make -C tools/dr_collector once
+# or
+dr_collector.exe --once
 ```
 
-After building, this also works because `dr_collector.local.json` is now the default config:
+---
 
-```sh
-tools/dr_collector/dr_collector
+## Log
+
+All status messages are written to the terminal and appended to `log_file`. Check this file if something is not working.
+
 ```
-
-Wait for relay report trigger, then exit after the first completed download:
-
-```sh
-tools/dr_collector/dr_collector --once
+2026-04-18 14:02:11 [INFO] connect 192.168.1.10:102
+2026-04-18 14:02:12 [INFO] baseline marked 4 existing file(s)
+2026-04-18 14:02:12 [INFO] waiting for relay report trigger
+2026-04-18 14:07:45 [INFO] relay-1: report trigger from PROT1/LLN0.RP.TripRCB01
+2026-04-18 14:07:55 [INFO] saved C:\Users\Engineer\Desktop\DRs\relay-1\dr_fault_20260418_140745\fault_001.cfg
+2026-04-18 14:07:56 [INFO] saved C:\Users\Engineer\Desktop\DRs\relay-1\dr_fault_20260418_140745\fault_001.dat
 ```
-
-Use a different config file only when needed:
-
-```sh
-tools/dr_collector/dr_collector path/to/other.json --once
-```
-
-Set `baseline_existing_on_start` to `true` so old relay files are marked known only when the state file is empty. Existing files are not downloaded on first run, and later restarts do not re-baseline files that appeared while the app was down.
-
-Numeric config fields are strict: missing keys keep the built-in defaults, but invalid text stops config loading with an error.
