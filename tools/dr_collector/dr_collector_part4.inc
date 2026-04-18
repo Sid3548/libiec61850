@@ -308,6 +308,8 @@ resolveDefaultConfig(char* out, size_t outSize, const char* program)
     return NULL;
 }
 
+#define RECONNECT_DELAY_SEC 30
+
 int
 main(int argc, char** argv)
 {
@@ -316,7 +318,7 @@ main(int argc, char** argv)
     bool once = false;
     const char* configPath = NULL;
     char defaultConfig[MAX_PATH_LEN];
-    int result;
+    int result = 0;
     int i;
 
     for (i = 1; i < argc; i++) {
@@ -372,7 +374,16 @@ main(int argc, char** argv)
         memset(&state, 0, sizeof(state));
 
     signal(SIGINT, handleSigint);
-    result = runCollector(&config, &state, once);
+
+    while (gRunning) {
+        result = runCollector(&config, &state, once);
+
+        if (once || !gRunning)
+            break;
+
+        logLine("WARN", "connection lost — reconnecting in 30 seconds");
+        sleepSeconds(RECONNECT_DELAY_SEC);
+    }
 
     if (gLogFile) {
         fclose(gLogFile);
